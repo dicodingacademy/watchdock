@@ -88,11 +88,16 @@ get_current_tag() {
   grep "^${1}=" "$ENV_FILE" 2>/dev/null | head -n1 | cut -d= -f2
 }
 
+# Rewrites the pin by truncating in place (cat >) instead of sed -i, which
+# replaces the file and would break the inode, owner and mode of ENV_FILE.
 set_env_tag() {
   var=$1
   tag=$2
   if grep -q "^${var}=" "$ENV_FILE" 2>/dev/null; then
-    sed -i "s|^${var}=.*|${var}=${tag}|" "$ENV_FILE"
+    tmp="${ENV_FILE}.tmp.$$"
+    sed "s|^${var}=.*|${var}=${tag}|" "$ENV_FILE" > "$tmp" \
+      && cat "$tmp" > "$ENV_FILE"
+    rm -f "$tmp"
   else
     echo "${var}=${tag}" >> "$ENV_FILE"
   fi
@@ -103,11 +108,29 @@ check_and_update() {
   repo=$2
   var=$3
 
+  # tag-var must be a valid env var name: it is interpolated into grep/sed
+  # patterns and written to ENV_FILE
+  case $var in
+    ""|[0-9]*|*[!A-Za-z0-9_]*)
+      log "WARN: skipping $service: invalid tag-var name '$var'"
+      return 0
+      ;;
+  esac
+
   latest_tag=$(get_latest_tag "$repo")
   if [ -z "$latest_tag" ]; then
     log "WARN: could not resolve latest tag for $repo (API error or no matching tags)"
     return 0
   fi
+
+  # defense in depth: even with a loosened TAG_PATTERN, never let characters
+  # outside the docker tag charset reach the sed replacement / ENV_FILE
+  case $latest_tag in
+    *[!A-Za-z0-9._-]*)
+      log "WARN: ignoring tag with unsafe characters for $repo: $latest_tag"
+      return 0
+      ;;
+  esac
 
   current_tag=$(get_current_tag "$var")
   if [ "$latest_tag" = "$current_tag" ]; then
