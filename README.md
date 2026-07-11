@@ -1,4 +1,4 @@
-# ghcr-compose-updater
+# Watchdock
 
 Generic auto-updater for docker compose stacks that deploy GHCR images with
 immutable tags (e.g. `sha-<commit>` from docker/metadata-action). Watchtower-style
