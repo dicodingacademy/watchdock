@@ -1,0 +1,120 @@
+# Sample stack using ghcr-compose-updater
+#
+# A typical small web app: API + worker + frontend, backed by postgres
+# and redis. The three app services are auto-updated; infra services
+# (db, redis) are not labeled and never touched by the updater.
+#
+# Required .env:
+#   API_TAG=sha-aaaaaaa
+#   WORKER_TAG=sha-bbbbbbb
+#   FRONTEND_TAG=sha-ccccccc
+#   GHCR_READ_TOKEN=ghp_xxxx        # PAT with read:packages
+#   DB_PASSWORD=change-me
+
+# Pin the project name so `docker compose` resolves the SAME project
+# whether invoked from the host or from inside the updater container.
+# Without this, the updater would spawn a duplicate stack.
+name: acme-shop
+
+services:
+  # ---- infra (not auto-updated: no labels) ------------------------------
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: acme
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
+      POSTGRES_DB: acme_shop
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acme -d acme_shop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  # ---- migration job (shares API_TAG, but NOT labeled) -------------------
+  # When the updater bumps API_TAG and runs `up -d api`, compose sees this
+  # image changed too, recreates it, runs migrations, and only starts the
+  # new api after it exits 0 (service_completed_successfully).
+
+  db-migrate:
+    image: ghcr.io/acme-corp/shop-api:${API_TAG:?set in .env}
+    command: ["npm", "run", "migrate"]
+    environment:
+      DATABASE_URL: postgresql://acme:${DB_PASSWORD:?}@db:5432/acme_shop
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # ---- app services (auto-updated via labels) ----------------------------
+
+  api:
+    image: ghcr.io/acme-corp/shop-api:${API_TAG:?set in .env}
+    labels:
+      auto-update.tag-var: API_TAG
+      auto-update.priority: "10"   # first: migrations gate everything else
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://acme:${DB_PASSWORD:?}@db:5432/acme_shop
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/acme-corp/shop-worker:${WORKER_TAG:?set in .env}
+    labels:
+      auto-update.tag-var: WORKER_TAG
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://acme:${DB_PASSWORD:?}@db:5432/acme_shop
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/acme-corp/shop-frontend:${FRONTEND_TAG:?set in .env}
+    labels:
+      auto-update.tag-var: FRONTEND_TAG
+    environment:
+      API_URL: http://api:3000
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # ---- the updater itself -------------------------------------------------
+
+  updater:
+    image: ghcr.io/<owner>/watchdock:latest
+    # or build from a checkout of the watchdock repo:
+    # build: path/to/watchdock
+    environment:
+      GITHUB_TOKEN: ${GHCR_READ_TOKEN:?PAT with read:packages}
+      POLL_INTERVAL: "300"
+      # VERBOSE: "1"                      # log every check, not just changes
+      # TAG_PATTERN: "^sha-[0-9a-f]+$"    # override deployable-tag regex
+      # GHCR_USER: your-github-username
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/compose
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
