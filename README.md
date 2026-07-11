@@ -19,7 +19,7 @@ update rotation is just adding labels. No updater config changes.
 
 ## Dropping into a project
 
-**1.** Use the prebuilt image `ghcr.io/<owner>/watchdock:latest` (published by
+**1.** Use the prebuilt image `ghcr.io/dicodingacademy/watchdock:latest` (published by
 this repo's CI), or copy `Dockerfile` + `updater.sh` from the repo root into a
 directory next to your compose file if you prefer building it yourself.
 
@@ -50,7 +50,7 @@ they get recreated automatically via `depends_on` when the labeled service updat
 
 ```yaml
   updater:
-    image: ghcr.io/<owner>/watchdock:latest
+    image: ghcr.io/dicodingacademy/watchdock:latest
     # or, if you copied the files instead:
     # build: ./updater
     environment:

@@ -97,7 +97,7 @@ services:
   # ---- the updater itself -------------------------------------------------
 
   updater:
-    image: ghcr.io/<owner>/watchdock:latest
+    image: ghcr.io/dicodingacademy/watchdock:latest
     # or build from a checkout of the watchdock repo:
     # build: path/to/watchdock
     environment:
