@@ -81,6 +81,8 @@ GHCR_READ_TOKEN=ghp_xxxx
 
 ## Configuration reference
 
+See `.env.example` for a ready-to-copy template.
+
 | Env var         | Default                       | Purpose                                    |
 |-----------------|-------------------------------|--------------------------------------------|
 | `GITHUB_TOKEN`  | (required)                    | PAT with `read:packages`; also used for GHCR pull |
