@@ -40,7 +40,7 @@
 COMPOSE_FILE=${COMPOSE_FILE:-/compose/docker-compose.yml}
 ENV_FILE=${ENV_FILE:-/compose/.env}
 POLL_INTERVAL=${POLL_INTERVAL:-300}
-TAG_PATTERN=${TAG_PATTERN:-^sha-[0-9a-f]{7,40}$}
+TAG_PATTERN=${TAG_PATTERN:-"^sha-[0-9a-f]{7,40}$"}
 GHCR_USER=${GHCR_USER:-token}
 VERBOSE=${VERBOSE:-0}
 
