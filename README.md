@@ -40,6 +40,7 @@ services:
     labels:
       auto-update.tag-var: MYAPP_TAG    # required: name of the pin var in .env
       auto-update.priority: "10"        # optional: lower runs first (default 100)
+      auto-update.tag-pattern: "^sha-[0-9a-f]{7,40}$" # optional: per-service tag regex override
 ```
 
 Services **without** the label are never touched. Dependency services that share
@@ -92,6 +93,39 @@ See `.env.example` for a ready-to-copy template.
 | `POLL_INTERVAL` | `300`                         | Seconds between cycles                     |
 | `TAG_PATTERN`   | `^sha-[0-9a-f]{7,40}$`        | Regex for deployable tags                  |
 | `VERBOSE`       | `0`                           | `1` = log every check, even when up-to-date |
+
+### Common Tag Pattern Templates
+
+You can use these common regex patterns in `TAG_PATTERN` (global env var) or `auto-update.tag-pattern` (per-service label):
+
+#### 1. Commit SHA Patterns
+| Tag Format Example | Regex Pattern | Example Output |
+|-------------------|---------------|----------------|
+| `sha-{commit-sha}` (Default) | `^sha-[0-9a-f]{7,40}$` | `sha-a1b2c3d` |
+| `{commit-sha}` (Raw SHA) | `^[0-9a-f]{7,40}$` | `a1b2c3d` or `a1b2c3d4e5f67890` |
+
+#### 2. CI/CD Build & Run Patterns
+| Tag Format Example | Regex Pattern | Example Output |
+|-------------------|---------------|----------------|
+| `v{run_id}-{commit_sha}` | `^v[0-9]+-[0-9a-f]{7,40}$` | `v12345678-a1b2c3d` |
+| `{run_id}-{commit_sha}` | `^[0-9]+-[0-9a-f]{7,40}$` | `12345678-a1b2c3d` |
+| `build-{number}` / `release-{number}` | `^(build|release|b|r)-?[0-9]+$` | `build-456` or `r102` |
+
+#### 3. Semantic & Calendar Versioning
+| Tag Format Example | Regex Pattern | Example Output |
+|-------------------|---------------|----------------|
+| `v{major}.{minor}.{patch}` (SemVer) | `^v?[0-9]+\.[0-9]+\.[0-9]+$` | `v1.2.3` or `1.2.3` |
+| SemVer with Pre-release (`rc`, `beta`) | `^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$` | `v1.2.3-rc.1` or `2.0.0-beta.2` |
+| `YYYY.MM.DD` / `YYYY.MM.DD.patch` (CalVer) | `^v?[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$` | `v2026.07.26` or `2026.07.26.1` |
+| `YYYYMMDD-{commit_sha}` (Date + SHA) | `^[0-9]{8}-[0-9a-f]{7,40}$` | `20260726-a1b2c3d` |
+
+#### 4. Branch & Environment Prefixes
+| Tag Format Example | Regex Pattern | Example Output |
+|-------------------|---------------|----------------|
+| `{branch}-{commit_sha}` | `^(main|master|develop|staging)-[0-9a-f]{7,40}$` | `main-a1b2c3d` |
+| `{env}-{version}` | `^(prod|staging|dev)-(v?[0-9.]+|sha-[0-9a-f]{7,40})$` | `prod-v1.2.3` or `staging-sha-a1b2c3d` |
+
+> **Tip:** You can combine multiple patterns using `|` (OR), e.g. `^(sha-[0-9a-f]{7,40}|v[0-9]+-[0-9a-f]{7,40})$`.
 
 ## Operations
 

@@ -88,6 +88,7 @@ services:
     image: ghcr.io/acme-corp/shop-frontend:${FRONTEND_TAG:?set in .env}
     labels:
       auto-update.tag-var: FRONTEND_TAG
+      # auto-update.tag-pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$" # optional: custom tag pattern per service
     environment:
       API_URL: http://api:3000
     ports:
