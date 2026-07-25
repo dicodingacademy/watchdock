@@ -53,34 +53,36 @@ compose() {
 }
 
 # Emits one line per labeled service, priority-sorted:
-#   <priority> <service> <image_repo> <tag_var>
+#   <priority> <service> <image_repo> <tag_var> <tag_pattern>
 discover_services() {
   compose config --format json 2>/dev/null \
-  | jq -r '
+  | jq -r --arg default_pat "$TAG_PATTERN" '
       .services | to_entries[]
       | select(.value.labels != null and .value.labels["auto-update.tag-var"] != null)
       | select(.value.image | startswith("ghcr.io/"))
       | [ (.value.labels["auto-update.priority"] // "100"),
           .key,
           (.value.image | split(":")[0]),
-          .value.labels["auto-update.tag-var"] ]
+          .value.labels["auto-update.tag-var"],
+          (.value.labels["auto-update.tag-pattern"] // $default_pat) ]
       | @tsv' \
   | sort -n
 }
 
-# Newest tag matching TAG_PATTERN from the GitHub Packages API.
+# Newest tag matching tag pattern from the GitHub Packages API.
 # Org and package are derived from the image repo (ghcr.io/<org>/<package>).
 # Versions come back newest-first; untagged versions and non-matching tags
 # (e.g. "latest") are skipped.
 get_latest_tag() {
   repo=$1
+  pat=${2:-$TAG_PATTERN}
   org=$(echo "$repo" | cut -d/ -f2)
   package=$(echo "$repo" | cut -d/ -f3)
   curl -sf --max-time 30 \
     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/orgs/${org}/packages/container/${package}/versions?per_page=10" \
-  | jq -r --arg pat "$TAG_PATTERN" \
+  | jq -r --arg pat "$pat" \
       '[.[] | .metadata.container.tags[]? | select(test($pat))] | first // empty'
 }
 
@@ -107,6 +109,7 @@ check_and_update() {
   service=$1
   repo=$2
   var=$3
+  pat=$4
 
   # tag-var must be a valid env var name: it is interpolated into grep/sed
   # patterns and written to ENV_FILE
@@ -117,7 +120,7 @@ check_and_update() {
       ;;
   esac
 
-  latest_tag=$(get_latest_tag "$repo")
+  latest_tag=$(get_latest_tag "$repo" "$pat")
   if [ -z "$latest_tag" ]; then
     log "WARN: could not resolve latest tag for $repo (API error or no matching tags)"
     return 0
@@ -177,12 +180,12 @@ if [ -z "$services" ]; then
 else
   count=$(echo "$services" | wc -l)
   log "Discovered $count service(s):"
-  echo "$services" | while read -r prio service repo var; do
-    log "  - $service ($repo, var=$var, priority=$prio)"
+  echo "$services" | while read -r prio service repo var pat; do
+    log "  - $service ($repo, var=$var, priority=$prio, pattern=$pat)"
   done
 fi
 
-log "Updater started. Polling every ${POLL_INTERVAL}s. Tag pattern: $TAG_PATTERN"
+log "Updater started. Polling every ${POLL_INTERVAL}s. Default tag pattern: $TAG_PATTERN"
 
 # ---- main loop ---------------------------------------------------------
 
@@ -190,8 +193,8 @@ last_heartbeat=$(date +%s)
 
 while true; do
   # rediscover each cycle so compose file edits are picked up live
-  discover_services | while read -r prio service repo var; do
-    check_and_update "$service" "$repo" "$var"
+  discover_services | while read -r prio service repo var pat; do
+    check_and_update "$service" "$repo" "$var" "$pat"
   done
 
   docker image prune -f >/dev/null 2>&1 || true
